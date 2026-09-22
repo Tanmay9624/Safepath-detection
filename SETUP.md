@@ -95,38 +95,85 @@ cd Safepath-detection
 ### C. Running the Python Pipeline
 
 #### 1. Download Sample Walking Footage (Optional)
-If you don't have a webcam or test video files, download the real-world crowd benchmark suite:
+If you don't have a webcam or video files, download the real-world crowd benchmark suite:
 ```bash
 python batch_download.py
 ```
-This fetches sample POV walking clips (`test_01_urban_crowd.mp4`, `test_02_suburban_path.mp4`, etc.).
+This fetches sample POV walking clips for testing.
 
-#### 2. Run Real-Time Assistive Navigation
+#### 2. Run Real-Time Assistive Navigation (`main.py`)
 ```bash
+# 1. Run Headless with default Local Machine Webcam:
 python main.py
 
-# Or specify custom test environments or live webcam:
-python main.py test_05_san_francisco_street.mp4  # Sidewalk walk with cars & sparse pedestrians (SF)
-python main.py test_06_residential_walk.mp4        # Quiet residential street with parked cars
-python main.py test_07_argentina_street.mp4        # City sidewalk & zebra crosswalk with traffic
-python main.py 0                                   # Live USB / Web Camera
-```
-* **HUD Features:**
-  - **Green Corridor:** Safe walkable path calculated via DeepLabV3 + morphological erosion.
-  - **Bounding Boxes:** Yellow (safe obstacle off-path) / Red (blocking walkable path).
-  - **Proximity:** Monocular depth tags (`NEAR: <2m` vs `AHEAD`).
-  - **Assistive Steering Commands:**
-    * `NAV: PATH CLEAR - PROCEED FORWARD`
-    * `NAV: HAZARD IN CENTER -> VEER RIGHT / VEER LEFT`
-    * `NAV: CROWD BLOCKED -> STOP / CAUTION`
-  - **Auditory Alert Tone:** Fires when an obstacle is within immediate proximity ($< 2\text{ m}$).
-* **Controls:** Press `q` or `ESC` in the display window to exit.
+# 2. Run with smartphone IP Webcam:
+python main.py --ip 192.168.1.100:8080
 
-#### 3. Run Automated Performance Verification Benchmark
-```bash
-python verify_optimizations.py
+# 3. Run with video file path (positional or --video):
+python main.py path/to/video.mp4
+python main.py --video path/to/video.mp4
+
+# 4. Optional GUI visual mode (opens dual OpenCV windows for debugging):
+python main.py --gui
+
+# 5. Throughput & Execution Tuning:
+python main.py path/to/video.mp4 --depth-cadence 3  # Boosts throughput to ~30-35+ FPS
+python main.py path/to/video.mp4 --max-frames 50    # Stops after 50 frames (automated testing)
 ```
-Computes real-time latency over 60 frames and outputs benchmark telemetry.
+* **Execution Architecture:** **Headless by default** (low-latency edge deployment with zero OpenCV window overhead). Add `--gui` if you wish to inspect dual visual streams.
+* **Continuous Playback vs. Test Limits:** By default (`--max-frames 0`), the pipeline executes continuously in real time (loops video files indefinitely until `Ctrl+C`). Setting `--max-frames N` stops after $N$ frames for testing and benchmarks.
+* **Pipeline Frame Rate:** Operates at **~20 to 25+ FPS** on standard GPUs. Setting `--depth-cadence 3` or `4` achieves **30–35+ FPS**.
+* **Audio TTS Feedback:**
+  - **Speech Synthesis:** Prioritized SAPI Text-To-Speech with Indian/Standard English accents.
+  - **Auditory Alert Tone:** 1000Hz earcon tone immediately fires upon critical proximity breach ($\le 1.5$m) and preempts ongoing speech.
+  - **Console Logging:** Formatted real-time alert logs in terminal console (`[STATUS | Frame 00030] 24.5 FPS | NAV: PATH CLEAR | ...`).
+* **Controls:** Press `Ctrl+C` in terminal (or `q` / `ESC` in display windows if running with `--gui`) to cleanly exit.
+
+#### 2.1 Run the 4-Panel Quad View Stream (`quad_view_main.py`)
+To monitor all four vision and navigation channels simultaneously in a single 1280x720 window:
+```bash
+python quad_view_main.py
+```
+* **Panel 1 (Top-Left):** YOLOv8 Obstacle Detections & Confidence.
+* **Panel 2 (Top-Right):** Depth Anything V2 High-Resolution Colormap + YOLOv8 Overlays & Metric Distances.
+* **Panel 3 (Bottom-Left):** DeepLabV3 Walkable Path Segmentation & Safety Buffer Contour.
+* **Panel 4 (Bottom-Right):** Complete Assistive Navigation HUD (Fusion, Steering & Audio Banner).
+* **Clear Path Heartbeat Tuning:**
+  - `python quad_view_main.py --clear-interval 15.0` (Default: speaks "Path is clear" once every 15s)
+  - `python quad_view_main.py --clear-interval 30.0` (Relaxed: 30-second quiet heartbeat)
+  - `python quad_view_main.py --clear-interval 0` (Alert-by-Exception: completely silent when clear, alerts only on hazards)
+* Press `s` anytime to save an instant snapshot. Press `q` or `ESC` to exit.
+
+#### 2.2 Run the Test & Verification Suite (`test/`)
+All dedicated unit tests, model checks, and performance benchmarks reside inside `test/`:
+
+* **Priority Audio Engine Unit Tests:**
+  To verify prioritized speech preemption, 1000Hz earcon beeps, and cooldown debouncing:
+  ```bash
+  python test/test_audio.py
+  ```
+
+* **Multi-Scenario Benchmark Suite:**
+  To evaluate all 10 real-world pedestrian test videos:
+  ```bash
+  python test/benchmark_suite.py
+  ```
+
+* **Automated Performance & Latency Benchmark:**
+  Computes real-time latency over 60 frames and outputs benchmark telemetry:
+  ```bash
+  python test/verify_optimizations.py
+  ```
+
+* **ONNX Model Graph & Shape Validator:**
+  ```bash
+  python test/check_onnx.py
+  ```
+
+* **Standalone Semantic Segmentation Visual Test:**
+  ```bash
+  python test/test.py path/to/video.mp4
+  ```
 
 ---
 
@@ -163,7 +210,14 @@ cmake --build build --config Release
 
 #### 4. Run the Binary
 ```powershell
+# Default run (opens default camera or video):
 .\build\Release\safepath.exe
+
+# High-performance headless edge run (33.4+ FPS on GPU with Cadence 2x):
+.\build\Release\safepath.exe path\to\video.mp4 --headless --depth-cadence 2
+
+# Ultra-fast mode with Cadence 3x (42.3+ FPS on GPU):
+.\build\Release\safepath.exe path\to\video.mp4 --headless --depth-cadence 3
 ```
 
 ---
@@ -207,22 +261,36 @@ make -j$(nproc)
 
 ## 4. Input Sources: Live Camera vs Pre-Recorded Footage
 
-### Switching to a Live Webcam / Wearable Camera
-To use a physical USB camera, chest-mounted action cam, or smart glasses instead of video files:
+### Switching Input Sources
+
+`main.py` provides flexible CLI arguments to seamlessly switch between local hardware webcams, IP smartphone streams, and video files:
 
 * **In Python (`main.py`):**
-  Change line 204 from a filename to camera index `0` (or `1` for external USB camera):
-  ```python
-  # video_path = resolve_path("test_01_urban_crowd.mp4")
-  video_path = 0  # 0 for default webcam / 1 for external USB chest-cam
+  ```bash
+  # 1. Default local machine webcam (Index 0):
+  python main.py
+
+  # 2. Specific external USB chest-mounted camera (Index 1 or 2):
+  python main.py --camera 1
+
+  # 3. Smartphone IP Webcam (e.g., via IP Webcam Android app):
+  python main.py --ip 192.168.1.100:8080
+
+  # 4. Pre-recorded test video path (positional or via --video):
+  python main.py path/to/video.mp4
+  python main.py --video path/to/video.mp4
   ```
 
 * **In C++ (`pipeline.cpp`):**
-  Change line 260 from a filename to integer device index:
-  ```cpp
-  // cv::VideoCapture cap(video_source);
-  cv::VideoCapture cap(0); // 0 for default camera
+  Pass the video path or webcam index as a command-line argument:
+  ```powershell
+  # Default video or live camera:
+  .\build\Release\safepath.exe
+
+  # Custom video path:
+  .\build\Release\safepath.exe path\to\video.mp4
   ```
+  Or change line 260 in `pipeline.cpp` from a filename to integer device index `cv::VideoCapture cap(0);` for default live webcam.
 
 ---
 

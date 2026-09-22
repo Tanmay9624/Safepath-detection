@@ -51,6 +51,10 @@ add_executable(safepath pipeline.cpp)
 
 target_include_directories(safepath PRIVATE ${OpenCV_INCLUDE_DIRS} ${ONNXRUNTIME_INCLUDE_DIR})
 
+if(MSVC)
+    target_compile_options(safepath PRIVATE /O2 /fp:fast)
+endif()
+
 if(WIN32)
     # Windows MSVC handles threading natively (no -lpthread)
     target_link_libraries(safepath PRIVATE ${OpenCV_LIBS} ${ONNXRUNTIME_LIBRARY})

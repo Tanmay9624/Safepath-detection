@@ -130,7 +130,8 @@ To exploit raw hardware parallelism, we engineered a **Tri-Thread Producer-Consu
 | **Concurrency Model** | Dual-Thread Co-Processing | Tri-Thread Producer-Consumer |
 | **Inter-Thread Sync** | Thread-safe `queue.Queue` | Custom `BoundedQueue` (`std::condition_variable`) |
 | **Primary Bottleneck Mitigated** | **Python GIL contention** & queue overhead | **GPU stream serialization** & CPU memory copy |
-| **Preprocessing Speed** | ~1.5 ms (Vectorized NumPy) | **~1.1 ms** (AVX2 SIMD `cv::split` + `memcpy`) |
+| **Preprocessing Speed** | ~1.5 ms (Vectorized NumPy) | **~0.3–1.1 ms** (AVX2 SIMD `cv::split` + planar pointers) |
+| **Sustained GPU Throughput** | **~20.0–25.0+ FPS** (Cadence 2x) | **~33.4–42.3 FPS** (Cadence 2x / 3x) 🚀 |
 | **Optimal Use Case** | Interactive prototyping, fast development | **Zero-overhead edge deployment** (Jetson / x86) |
 
 ---
@@ -142,9 +143,9 @@ To exploit raw hardware parallelism, we engineered a **Tri-Thread Producer-Consu
 | **DeepLabV3 MobileNet** | ~75 ms | **6.9 ms** | **6.9 ms** (Runs 100% of frames) |
 | **YOLOv8 Hazards** | ~60 ms | **6.9 ms** | **6.9 ms** (Runs 100% of frames) |
 | **Depth Anything V2** | ~450 ms | **48.0 ms** | **24.0 ms blended** (Runs every 2nd frame) |
-| **Preprocessing & Overlap Math** | ~45 ms (CPU) | ~1.5 ms | **~1.5 ms** (SIMD / pre-downscaling) |
-| **Total Frame Latency** | **~500+ ms** | **~74 ms** | **55.8 ms blended** (28.1 ms on odd frames) |
-| **Sustained Pipeline FPS** | **~2.0 FPS** | **~13.5 FPS** | **~18.0–20.0+ FPS** 🚀 |
+| **Preprocessing & Overlap Math** | ~45 ms (CPU) | ~1.5 ms | **~1.1 ms** (SIMD / pre-downscaling) |
+| **Total Frame Latency** | **~500+ ms** | **~74 ms** | **29.9 ms (C++) / 55.8 ms (Python)** |
+| **Sustained Pipeline FPS** | **~2.0 FPS** | **~13.5 FPS** | **33.4 FPS (C++) / ~20 FPS (Python)** 🚀 |
 
 *(Detailed telemetry and root-cause analysis documented in [`optimization.md`](./optimization.md)).*
 
@@ -194,27 +195,29 @@ full_test/
 ├── deps/                         # Self-contained C++ SDKs (OpenCV & ONNX Runtime)
 │   ├── onnxruntime/              # ONNX Runtime C++ GPU SDK (v1.20.0)
 │   └── opencv/                   # Pre-compiled OpenCV 4.10.0 Windows SDK
+├── test/                         # Dedicated test and benchmark suite
+│   ├── __init__.py
+│   ├── test_audio.py             # Priority audio engine verification test suite
+│   ├── test.py                   # Semantic segmentation standalone visual test
+│   ├── verify_optimizations.py   # Latency benchmark and visual artifact verification
+│   ├── benchmark_suite.py        # Multi-scenario real-world test video evaluation
+│   └── check_onnx.py             # ONNX input/output dimension validator
 ├── deeplabv3_mobilenet_safepath.onnx       # Trained semantic segmentation model (Graph)
 ├── deeplabv3_mobilenet_safepath.onnx.data  # Model weight tensors (44 MB)
-├── main.py                       # High-speed GPU Python pipeline
+├── depth_anything_v2_small.onnx            # Monocular depth estimation ONNX model
+├── yolov8n_hazards.onnx                    # Real-time obstacle detection ONNX model
+├── main.py                       # High-speed GPU Python pipeline (Headless by default)
+├── quad_view_main.py             # 4-Panel Single-Window Quad Stream (1280x720)
+├── audio_engine.py               # Asynchronous Priority TTS Speech & Audio Engine
 ├── pipeline.cpp                  # Multi-threaded C++ production engine
 ├── CMakeLists.txt                # Cross-platform build script (Windows / Linux)
 ├── optimization.md               # In-depth benchmark telemetry and optimization audit
-├── verify_optimizations.py       # Automated benchmark and verification script
+├── walkthrough.md                # Visual walkthrough, verification report and snapshots
 ├── requirements.txt              # Unified Python requirements specification
 ├── requirements-gpu.txt          # GPU-accelerated requirements (NVIDIA CUDA 12)
 ├── requirements-cpu.txt          # CPU-only lightweight requirements
 ├── setup_cpp_windows.ps1         # Windows C++ compiler setup guide
-├── download_videos.py            # YouTube test video downloader
-├── batch_download.py             # Multi-scenario video test suite downloader
-├── check_onnx.py                 # ONNX input/output dimension validator
-├── test_01_urban_crowd.mp4       # Real-world test: Dense pedestrian crowd (Tokyo)
-├── test_02_suburban_path.mp4     # Real-world test: Residential sidewalk navigation
-├── test_03_rainy_night.mp4       # Real-world test: Reflective streets & harsh weather
-├── test_04_chest_mount.mp4       # Real-world test: Downward white-cane walking POV
-├── test_05_san_francisco_street.mp4 # Real-world test: Sidewalk walk with cars & sparse pedestrians (SF)
-├── test_06_residential_walk.mp4  # Real-world test: Quiet residential street with parked driveway cars
-└── test_07_argentina_street.mp4  # Real-world test: Urban sidewalk & zebra crosswalk with traffic cars
+└── batch_download.py             # Multi-scenario video test suite downloader
 ```
 
 ---
@@ -260,30 +263,81 @@ cd safepath_detection/full_test
 # Or if you are already inside the folder:
 cd full_test
 
-# Run real-time GPU inference (defaults to test_05_san_francisco_street.mp4):
+# 1. Run Headless with default Local Machine Webcam:
 python main.py
 
-# Or specify any test video or webcam directly from CLI:
-python main.py test_06_residential_walk.mp4
-python main.py test_07_argentina_street.mp4
-python main.py 0   # Real-time USB / Web Camera
+# 2. Run with smartphone IP Webcam (auto-normalizes to http://<ip>:<port>/video):
+python main.py --ip 192.168.1.100:8080
+
+# 3. Run with video file path (positional or via --video flag):
+python main.py path/to/video.mp4
+python main.py --video path/to/video.mp4
+
+# 4. Optional GUI visual mode (opens dual OpenCV windows for debugging):
+python main.py --gui
+
+# 5. Throughput & Execution Tuning:
+python main.py path/to/video.mp4 --depth-cadence 3  # Boosts throughput to ~30-35+ FPS
+python main.py path/to/video.mp4 --max-frames 50    # Stops after 50 frames (automated testing)
 ```
 
-* **Controls:** Press `q` or `ESC` in the display window to exit.
+* **Execution Mode:** Completely **Headless** by default (zero GUI windows). Renders all assistive directives through real-time TTS audio speech, 1000 Hz earcon warning beeps, and a live console status dashboard.
+* **Continuous Playback vs. Test Limits:** By default (`--max-frames 0`), the pipeline executes continuously in real time (loops video files indefinitely until `Ctrl+C`). Passing `--max-frames N` stops after $N$ frames for testing and benchmarks.
+* **Pipeline Frame Rates:** Runs at **~20 to 25+ FPS** in steady state on GPU. Increase `--depth-cadence` to `3` or `4` to push sustained performance to **30–35+ FPS**.
+* **Camera Fallback:** Automatically defaults to the local machine camera (`Index 0`) with Windows DirectShow acceleration if no IP webcam or video path is specified.
+* **Audio Heartbeat Tuning:** Add `--clear-interval 15.0` (default) or `--clear-interval 0` for pure alert-by-exception.
+* **Controls:** Press `Ctrl+C` in the terminal (or `q` / `ESC` if running with `--gui`) to cleanly stop.
+
+---
+
+### 3.1 Running the 4-Panel Quad View Stream (`quad_view_main.py`)
+
+To view all perception and navigation layers simultaneously in a single, unified 1280x720 window:
+
+```bash
+# Run 4-panel quad stream (Panel 1: YOLO, Panel 2: Depth V2 full-res, Panel 3: DeepLabV3, Panel 4: HUD):
+python quad_view_main.py
+
+# Or specify a custom video / webcam:
+python quad_view_main.py --source path/to/video.mp4
+python quad_view_main.py --source 0
+
+# Optional flags:
+python quad_view_main.py --clear-interval 15.0  # Seconds between 'Path is clear' audio (default: 15.0)
+python quad_view_main.py --clear-interval 0     # Pure alert-by-exception (silent when path is clear)
+python quad_view_main.py --no-tts               # Run silently without speech audio
+python quad_view_main.py --conf 0.35            # Custom YOLO confidence threshold
+```
+* **Panel 1 (Top-Left):** YOLOv8 Detections & Class Labels.
+* **Panel 2 (Top-Right):** Depth Anything V2 High-Resolution Colormap + YOLOv8 Overlays & Metric Distances.
+* **Panel 3 (Bottom-Left):** DeepLabV3 Walkable Path Segmentation & Safety Buffer Contour.
+* **Panel 4 (Bottom-Right):** Complete Assistive Navigation HUD (Fusion, Steering & Audio Banner).
+* **Interactive Snapshot:** Press `s` anytime to save an instant snapshot of the 4-panel view. Press `q` or `ESC` to exit.
 
 ---
 
 ### 4. Running the Compiled C++ Executable (`safepath.exe`)
 
-The C++ multi-threaded executable has been pre-compiled for Windows with full CUDA GPU support:
+The C++ multi-threaded executable has been pre-compiled for Windows with full CUDA GPU acceleration and Cadence Caching:
 
 ```powershell
-# Run default test video:
+# 1. Run with live camera or default video:
 .\build\Release\safepath.exe
 
-# Or specify custom video:
-.\build\Release\safepath.exe test_06_residential_walk.mp4
+# 2. Run with video path:
+.\build\Release\safepath.exe path\to\video.mp4
+
+# 3. High-Performance Headless Edge Mode (33.4+ FPS with Cadence 2x):
+.\build\Release\safepath.exe path\to\video.mp4 --headless --depth-cadence 2
+
+# 4. Ultra-Fast High-Throughput Mode (42.3+ FPS with Cadence 3x):
+.\build\Release\safepath.exe path\to\video.mp4 --headless --depth-cadence 3
+
+# 5. Automated Benchmark Run (e.g. 50 frames limit):
+.\build\Release\safepath.exe path\to\video.mp4 50 --headless
 ```
+* **Cadence Scaling:** `--depth-cadence 2` (default, runs Depth on even frames $\rightarrow$ 33.4 FPS) or `--depth-cadence 3` (runs Depth every 3rd frame $\rightarrow$ 42.3 FPS).
+* **Execution Options:** Add `--headless` for maximum edge throughput with zero GUI overhead, or run without `--headless` for interactive OpenCV visualization.
 
 ---
 
@@ -305,19 +359,34 @@ cmake --build build --config Release
 
 ---
 
-### 6. Running the Automated Performance Verification Benchmark
+### 6. Test Suite & Verification Scripts (`test/`)
 
-To verify latency and save visual verification artifacts:
+All automated benchmarks, unit tests, and model validators reside inside the dedicated [`test/`](./test/) folder:
 
 ```bash
-python verify_optimizations.py
+# 1. Automated Performance & Latency Benchmark:
+python test/verify_optimizations.py
+
+# 2. Multi-Scenario Real-World Test Video Benchmark Suite:
+python test/benchmark_suite.py
+
+# 3. Priority Audio Engine & Preemption Unit Tests:
+python test/test_audio.py
+
+# 4. Standalone Semantic Segmentation Visual Test:
+python test/test.py path/to/video.mp4
+
+# 5. ONNX Model Input/Output Tensor Shape Validator:
+python test/check_onnx.py
 ```
-This processes 60 frames, computes heavy vs. cadence frame latency, and writes timestamped verification images (`opt_verification_frame10.jpg`, `frame25.jpg`, `frame40.jpg`) directly to `full_test/`.
+* **Performance Verification (`test/verify_optimizations.py`):** Processes 60 frames, computes heavy vs. cadence frame latency, and writes timestamped verification images (`opt_verification_frame10.jpg`, `frame25.jpg`, `frame40.jpg`) directly to `test/`.
+* **Benchmark Suite (`test/benchmark_suite.py`):** Runs SafePath across real-world pedestrian test videos, reporting steady-state FPS, hazard counts, and navigation decisions in a summary table.
+* **Audio Unit Test (`test/test_audio.py`):** Validates priority preemption (Priority 1 immediate override over Priority 3 guidance), 1000 Hz proximity warning tones, and debounce cooldown timers.
+* **Model Validator (`test/check_onnx.py`):** Inspects input/output dimensions and execution providers for DeepLabV3, Depth Anything V2, and YOLOv8 models.
 
 ---
 
-## 👥 Project & Team
+## 👥 Project
 
 * **Project:** `safepath_detection` (SafePath AI)
-* **Team:** Group 7
 

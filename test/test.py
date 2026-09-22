@@ -4,6 +4,11 @@ import time
 import cv2
 import numpy as np
 
+# Ensure parent directory (full_test) is in sys.path
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 # Ensure CUDA and cuDNN libraries from PyTorch are loaded by ONNX Runtime
 try:
     import torch
@@ -27,16 +32,23 @@ def get_color_mask(pred_mask):
     return color_palette[pred_mask]
 
 def resolve_path(filename):
-    """Resolves file paths strictly within the full_test folder."""
+    """Resolves file paths strictly within full_test or relative to current dir."""
+    if not filename:
+        return ""
+    if os.path.isabs(filename) and os.path.exists(filename):
+        return filename
     if os.path.exists(filename):
         return filename
     script_dir = os.path.dirname(os.path.abspath(__file__))
     local_path = os.path.join(script_dir, filename)
     if os.path.exists(local_path):
         return local_path
+    parent_path = os.path.join(os.path.dirname(script_dir), filename)
+    if os.path.exists(parent_path):
+        return parent_path
     return filename
 
-def process_video(video_path="test_01_urban_crowd.mp4", onnx_model_path="deeplabv3_mobilenet_safepath.onnx"):
+def process_video(video_path="test_01_urban_crowd.mp4", onnx_model_path="deeplabv3_mobilenet_safepath.onnx", max_frames=None):
     video_path = resolve_path(video_path)
     onnx_model_path = resolve_path(onnx_model_path)
         
@@ -61,21 +73,29 @@ def process_video(video_path="test_01_urban_crowd.mp4", onnx_model_path="deeplab
     # Normalization constants (ImageNet standard)
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-    target_size = (384, 256)  # (Width, Height)
-    erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
 
-    print(f"\n[START] Streaming video inference: {video_path}")
+    # 3x3 morphological erosion kernel for path boundary safety
+    erode_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    target_size = (384, 256)
+
+    print(f">> Running SafePath Segmentation on {video_path}")
     print(">> Press 'q' or 'ESC' to quit.")
 
     fps_history = []
+    frames_processed = 0
 
     while True:
+        if max_frames is not None and frames_processed >= max_frames:
+            break
         t0 = time.perf_counter()
         ret, original_frame = cap.read()
         if not ret:
+            if max_frames is not None:
+                break
             # Loop video
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
+        frames_processed += 1
             
         original_h, original_w = original_frame.shape[:2]
 
@@ -127,6 +147,15 @@ def process_video(video_path="test_01_urban_crowd.mp4", onnx_model_path="deeplab
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    vid = sys.argv[1] if len(sys.argv) > 1 else ("test_05_san_francisco_street.mp4" if os.path.exists(resolve_path("test_05_san_francisco_street.mp4")) else "test_01_urban_crowd.mp4")
-    process_video(video_path=vid)
+    import argparse
+    parser = argparse.ArgumentParser(description="SafePath Semantic Segmentation Visual Test")
+    parser.add_argument("video_pos", nargs="?", default=None, help="Path to video file")
+    parser.add_argument("--video", type=str, default=None, help="Path to video file")
+    parser.add_argument("--max-frames", type=int, default=None, help="Max frames to process")
+    args = parser.parse_args()
+
+    vid = args.video or args.video_pos
+    if not vid:
+        vid = "test_05_san_francisco_street.mp4" if os.path.exists(resolve_path("test_05_san_francisco_street.mp4")) else "test_01_urban_crowd.mp4"
+    process_video(video_path=vid, max_frames=args.max_frames)
 

@@ -9,23 +9,28 @@ def download_test_suite():
         {"name": "test_04_chest_mount", "query": "ytsearch1:white cane POV walking blindness short"},
         {"name": "test_05_san_francisco_street", "query": "https://www.youtube.com/watch?v=NSgUUzIXT4E"},
         {"name": "test_06_residential_walk", "query": "https://www.youtube.com/watch?v=Zj_Vv40vtTo"},
-        {"name": "test_07_argentina_street", "query": "https://www.youtube.com/watch?v=T21A9GZD3Mc"}
+        {"name": "test_07_argentina_street", "query": "https://www.youtube.com/watch?v=T21A9GZD3Mc"},
+        {"name": "test_08_market", "query": "https://youtube.com/shorts/LWfU232N5Qw?si=4gvlRB3laXF7zA5i"},
+        {"name": "test_09", "query": "https://youtube.com/shorts/Eex6l6jeIR4?si=qW3FZX4lTtosuWtK"},
+        {"name": "test_10", "query": "https://youtube.com/shorts/55g9NJq7dxA?si=6up5b59Qzw1a3F7x"}
     ]
     
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     print("Starting Batch Download of Test Suite...")
     
     for vid in videos:
-        output_file = f"{vid['name']}.mp4"
+        output_file = os.path.join(script_dir, f"{vid['name']}.mp4")
         if os.path.exists(output_file):
-            print(f"Skipping {output_file}, already exists.")
+            print(f"Skipping {os.path.basename(output_file)}, already exists.")
             continue
             
         print(f"\nSearching & Downloading: {vid['name']}...")
         
         # Options: max 720p, auto-merge video and audio
+        outtmpl_path = os.path.join(script_dir, f"{vid['name']}.%(ext)s")
         ydl_opts = {
             'format': 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': f"{vid['name']}.%(ext)s",
+            'outtmpl': outtmpl_path,
             'merge_output_format': 'mp4',
             'quiet': False,
             'no_warnings': True

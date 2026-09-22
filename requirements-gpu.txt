@@ -29,3 +29,6 @@ onnxconverter-common>=1.14.0
 # Video Test Suite Fetcher
 yt-dlp>=2024.0.0
 
+# Windows SAPI Audio Speech Engine
+pywin32>=306; sys_platform == 'win32'
+
