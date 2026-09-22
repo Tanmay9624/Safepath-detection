@@ -6,7 +6,10 @@ def download_test_suite():
         {"name": "test_01_urban_crowd", "query": "ytsearch1:POV walking shinjuku crowd short"},
         {"name": "test_02_suburban_path", "query": "ytsearch1:suburban neighborhood walking POV 5 minutes"},
         {"name": "test_03_rainy_night", "query": "ytsearch1:rainy night city walking POV 5 minutes"},
-        {"name": "test_04_chest_mount", "query": "ytsearch1:white cane POV walking blindness short"}
+        {"name": "test_04_chest_mount", "query": "ytsearch1:white cane POV walking blindness short"},
+        {"name": "test_05_san_francisco_street", "query": "https://www.youtube.com/watch?v=NSgUUzIXT4E"},
+        {"name": "test_06_residential_walk", "query": "https://www.youtube.com/watch?v=Zj_Vv40vtTo"},
+        {"name": "test_07_argentina_street", "query": "https://www.youtube.com/watch?v=T21A9GZD3Mc"}
     ]
     
     print("Starting Batch Download of Test Suite...")

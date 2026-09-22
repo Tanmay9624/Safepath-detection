@@ -127,5 +127,6 @@ def process_video(video_path="test_01_urban_crowd.mp4", onnx_model_path="deeplab
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    process_video()
+    vid = sys.argv[1] if len(sys.argv) > 1 else ("test_05_san_francisco_street.mp4" if os.path.exists(resolve_path("test_05_san_francisco_street.mp4")) else "test_01_urban_crowd.mp4")
+    process_video(video_path=vid)
 

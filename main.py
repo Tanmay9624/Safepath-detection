@@ -218,7 +218,13 @@ def main():
     t_obs.start()
     t_seg.start()
 
-    video_path = resolve_path("test_01_urban_crowd.mp4")
+    video_arg = sys.argv[1] if len(sys.argv) > 1 else "test_05_san_francisco_street.mp4"
+    if video_arg.isdigit():
+        video_path = int(video_arg)
+    else:
+        video_path = resolve_path(video_arg)
+        if not os.path.exists(str(video_path)):
+            video_path = resolve_path("test_01_urban_crowd.mp4")
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():

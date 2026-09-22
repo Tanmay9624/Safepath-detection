@@ -11,6 +11,7 @@
 #include <opencv2/dnn.hpp>
 #include <onnxruntime_cxx_api.h>
 #include <filesystem>
+#include <iomanip>
 
 namespace fs = std::filesystem;
 
@@ -94,23 +95,25 @@ std::vector<float> prepare_tensor(const cv::Mat& image, int w, int h, const floa
 }
 
 // Helper to configure CUDA Session Options
-void configure_session_options(Ort::SessionOptions& opts) {
+void configure_session_options(Ort::SessionOptions& opts, const std::string& model_name = "Model") {
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     opts.SetIntraOpNumThreads(2);
     try {
         OrtCUDAProviderOptions cuda_opts;
         cuda_opts.device_id = 0;
         opts.AppendExecutionProvider_CUDA(cuda_opts);
+        std::cout << "[CUDA INIT] " << model_name << ": CUDAExecutionProvider appended (Device 0: NVIDIA GPU)" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "[WARN] CUDA provider failed, falling back to CPU: " << e.what() << std::endl;
+        std::cerr << "[WARN] " << model_name << ": CUDA provider failed, falling back to CPU: " << e.what() << std::endl;
     }
 }
 
 // 1. DeepLabV3+ Worker (256x384)
 void worker_deeplab(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& out_q, Ort::Env& env) {
     Ort::SessionOptions opts;
-    configure_session_options(opts);
+    configure_session_options(opts, "DeepLabV3-MobileNet");
     Ort::Session session(env, RESOLVE_MODEL("deeplabv3_mobilenet_safepath.onnx"), opts);
+    std::cout << "[READY] DeepLabV3 Session loaded on GPU (CUDA)\n";
     Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     const float mean[] = {0.485f, 0.456f, 0.406f};
@@ -157,8 +160,9 @@ void worker_deeplab(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>
 // 2. YOLOv8 Worker (640x480)
 void worker_yolo(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& out_q, Ort::Env& env) {
     Ort::SessionOptions opts;
-    configure_session_options(opts);
+    configure_session_options(opts, "YOLOv8-Hazards");
     Ort::Session session(env, RESOLVE_MODEL("yolov8n_hazards.onnx"), opts);
+    std::cout << "[READY] YOLOv8 Hazards Session loaded on GPU (CUDA)\n";
     Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     const float mean[] = {0.0f, 0.0f, 0.0f};
@@ -218,8 +222,9 @@ void worker_yolo(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& o
 // 3. Depth Anything V2 Worker (518x518)
 void worker_depth_anything(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& out_q, Ort::Env& env) {
     Ort::SessionOptions opts;
-    configure_session_options(opts);
+    configure_session_options(opts, "DepthAnythingV2-Small");
     Ort::Session session(env, RESOLVE_MODEL("depth_anything_v2_small.onnx"), opts);
+    std::cout << "[READY] Depth Anything V2 Session loaded on GPU (CUDA)\n";
     Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     const float mean[] = {0.485f, 0.456f, 0.406f};
@@ -246,7 +251,7 @@ void worker_depth_anything(BoundedQueue<FrameData>& in_q, BoundedQueue<Inference
 }
 
 // Main Pipeline Loop (Visual Overlay & Console Diagnostics)
-int main() {
+int main(int argc, char** argv) {
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "SafePathEdge");
 
     BoundedQueue<FrameData> dl_in, yolo_in, depth_in;
@@ -256,7 +261,27 @@ int main() {
     std::thread t_yolo(worker_yolo, std::ref(yolo_in), std::ref(yolo_out), std::ref(env));
     std::thread t_depth(worker_depth_anything, std::ref(depth_in), std::ref(depth_out), std::ref(env));
 
-    std::string video_source = resolve_file("test_01_urban_crowd.mp4");
+    std::string video_source;
+    int max_frames = -1;
+    bool headless = false;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--headless") {
+            headless = true;
+        } else if (std::isdigit(arg[0])) {
+            max_frames = std::stoi(arg);
+        } else if (video_source.empty()) {
+            video_source = resolve_file(arg);
+        }
+    }
+
+    if (video_source.empty()) {
+        video_source = resolve_file("test_05_san_francisco_street.mp4");
+        if (!std::filesystem::exists(video_source)) {
+            video_source = resolve_file("test_01_urban_crowd.mp4");
+        }
+    }
     cv::VideoCapture cap(video_source);
     if (!cap.isOpened()) {
         std::cerr << "[ERROR] Cannot open video source: " << video_source << "\n";
@@ -268,7 +293,8 @@ int main() {
     auto last_time = std::chrono::high_resolution_clock::now();
     double smooth_fps = 0.0;
 
-    std::cout << "[INFO] Starting SafePath C++ Multi-Threaded GPU Pipeline...\n";
+    std::cout << "[INFO] Starting SafePath C++ Tri-Thread GPU Pipeline...\n";
+    std::cout << "[INFO] Ingest source: " << video_source << " | Headless: " << (headless ? "YES" : "NO") << "\n";
 
     while (cap.read(raw_frame)) {
         // Pre-downscale raw frame ONCE to 640x360 to eliminate high-res CPU overhead
@@ -426,10 +452,23 @@ int main() {
             // Draw corridor boundary indicators at bottom
             cv::line(frame, cv::Point((int)(0.35 * orig_w), orig_h - 25), cv::Point((int)(0.35 * orig_w), orig_h), cv::Scalar(255, 255, 255), 1);
             cv::line(frame, cv::Point((int)(0.65 * orig_w), orig_h - 25), cv::Point((int)(0.65 * orig_w), orig_h), cv::Scalar(255, 255, 255), 1);
+            if (frame_count % 10 == 0) {
+                std::cout << "[PROGRESS] Frame " << frame_count << " | Throughput: " 
+                          << std::fixed << std::setprecision(1) << smooth_fps 
+                          << " FPS | Decision: " << nav_text << std::endl;
+            }
         }
 
-        cv::imshow("SafePath Edge C++: Assistive Navigation", frame);
-        if (cv::waitKey(1) == 27) break; // ESC to quit
+        if (!headless) {
+            cv::imshow("SafePath Edge C++: Assistive Navigation", frame);
+            if (cv::waitKey(1) == 27) break; // ESC to quit
+        }
+
+        if (max_frames > 0 && frame_count >= max_frames) {
+            std::cout << "\n[SUCCESS] Completed " << frame_count 
+                      << " frames on GPU! Average sustained throughput: " << (int)smooth_fps << " FPS.\n";
+            break;
+        }
     }
 
     exit(0);

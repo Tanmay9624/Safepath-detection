@@ -211,12 +211,18 @@ full_test/
 ├── test_01_urban_crowd.mp4       # Real-world test: Dense pedestrian crowd (Tokyo)
 ├── test_02_suburban_path.mp4     # Real-world test: Residential sidewalk navigation
 ├── test_03_rainy_night.mp4       # Real-world test: Reflective streets & harsh weather
-└── test_04_chest_mount.mp4       # Real-world test: Downward white-cane walking POV
+├── test_04_chest_mount.mp4       # Real-world test: Downward white-cane walking POV
+├── test_05_san_francisco_street.mp4 # Real-world test: Sidewalk walk with cars & sparse pedestrians (SF)
+├── test_06_residential_walk.mp4  # Real-world test: Quiet residential street with parked driveway cars
+└── test_07_argentina_street.mp4  # Real-world test: Urban sidewalk & zebra crosswalk with traffic cars
 ```
 
 ---
 
 ## 🛠️ Step-by-Step Usage Guide
+
+> [!TIP]
+> For a comprehensive installation and setup walkthrough across Windows and Linux / NVIDIA Jetson, see [**`SETUP.md`**](./SETUP.md).
 
 ### 1. Python Environment Setup
 
@@ -254,11 +260,15 @@ cd safepath_detection/full_test
 # Or if you are already inside the folder:
 cd full_test
 
-# Run real-time GPU inference with cadence caching
+# Run real-time GPU inference (defaults to test_05_san_francisco_street.mp4):
 python main.py
+
+# Or specify any test video or webcam directly from CLI:
+python main.py test_06_residential_walk.mp4
+python main.py test_07_argentina_street.mp4
+python main.py 0   # Real-time USB / Web Camera
 ```
 
-* **Video Selection:** Change `video_path = ...` in `main.py` to test different environments (`test_01_urban_crowd.mp4`, `test_02_suburban_path.mp4`, etc.).
 * **Controls:** Press `q` or `ESC` in the display window to exit.
 
 ---
@@ -268,8 +278,11 @@ python main.py
 The C++ multi-threaded executable has been pre-compiled for Windows with full CUDA GPU support:
 
 ```powershell
-# From safepath_detection/full_test:
+# Run default test video:
 .\build\Release\safepath.exe
+
+# Or specify custom video:
+.\build\Release\safepath.exe test_06_residential_walk.mp4
 ```
 
 ---
