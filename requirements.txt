@@ -1,0 +1,32 @@
+# ==============================================================================
+# SafePath AI: Unified Python Requirements
+# ==============================================================================
+#
+# QUICK INSTALLATION INSTRUCTIONS:
+#
+# 1. FOR NVIDIA GPU SYSTEMS (RTX / GTX with CUDA 12):
+#    pip install -r requirements-gpu.txt
+#
+# 2. FOR CPU-ONLY SYSTEMS (Laptops / Systems without NVIDIA GPUs):
+#    pip install -r requirements-cpu.txt
+#
+# ==============================================================================
+
+# Core Computer Vision & Array Processing
+opencv-python>=4.10.0
+numpy>=1.26.0,<3.0.0
+pillow>=10.0.0
+
+# ONNX Model Execution
+# Default to CPU onnxruntime (Use requirements-gpu.txt for onnxruntime-gpu)
+onnxruntime>=1.20.0
+onnx>=1.16.0
+onnxconverter-common>=1.14.0
+
+# PyTorch & Neural Network Framework
+torch>=2.4.0
+torchvision>=0.19.0
+
+# Dataset & Test Video Downloading
+yt-dlp>=2024.0.0
+

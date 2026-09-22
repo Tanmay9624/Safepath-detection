@@ -1,9 +1,19 @@
+import os
 import onnxruntime as ort
 
+def resolve_path(filename):
+    if os.path.exists(filename):
+        return filename
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    local_path = os.path.join(script_dir, filename)
+    if os.path.exists(local_path):
+        return local_path
+    return filename
+
 models = {
-    "Segmentation": "deeplabv3_mobilenet_safepath.onnx",
-    "Depth": "../new_suite/depth_anything_v2_small.onnx",
-    "YOLO": "../yolov8n_hazards.onnx"
+    "Segmentation": resolve_path("deeplabv3_mobilenet_safepath.onnx"),
+    "Depth": resolve_path("depth_anything_v2_small.onnx"),
+    "YOLO": resolve_path("yolov8n_hazards.onnx")
 }
 
 for name, path in models.items():

@@ -10,11 +10,28 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
 #include <onnxruntime_cxx_api.h>
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
+inline std::string resolve_file(const std::string& name) {
+    if (fs::exists(name)) return name;
+    if (fs::exists("../" + name)) return "../" + name;
+    if (fs::exists("../../" + name)) return "../../" + name;
+    return name;
+}
 
 #ifdef _WIN32
-  #define ORT_PATH(str) L##str
+inline std::wstring resolve_model_path(const std::string& name) {
+    std::string path = resolve_file(name);
+    return std::wstring(path.begin(), path.end());
+}
+#define RESOLVE_MODEL(name) resolve_model_path(name).c_str()
 #else
-  #define ORT_PATH(str) str
+inline std::string resolve_model_path(const std::string& name) {
+    return resolve_file(name);
+}
+#define RESOLVE_MODEL(name) resolve_model_path(name).c_str()
 #endif
 
 struct FrameData {
@@ -93,7 +110,7 @@ void configure_session_options(Ort::SessionOptions& opts) {
 void worker_deeplab(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& out_q, Ort::Env& env) {
     Ort::SessionOptions opts;
     configure_session_options(opts);
-    Ort::Session session(env, ORT_PATH("deeplabv3_mobilenet_safepath.onnx"), opts);
+    Ort::Session session(env, RESOLVE_MODEL("deeplabv3_mobilenet_safepath.onnx"), opts);
     Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     const float mean[] = {0.485f, 0.456f, 0.406f};
@@ -141,7 +158,7 @@ void worker_deeplab(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>
 void worker_yolo(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& out_q, Ort::Env& env) {
     Ort::SessionOptions opts;
     configure_session_options(opts);
-    Ort::Session session(env, ORT_PATH("../yolov8n_hazards.onnx"), opts);
+    Ort::Session session(env, RESOLVE_MODEL("yolov8n_hazards.onnx"), opts);
     Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     const float mean[] = {0.0f, 0.0f, 0.0f};
@@ -202,7 +219,7 @@ void worker_yolo(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& o
 void worker_depth_anything(BoundedQueue<FrameData>& in_q, BoundedQueue<InferenceResult>& out_q, Ort::Env& env) {
     Ort::SessionOptions opts;
     configure_session_options(opts);
-    Ort::Session session(env, ORT_PATH("../new_suite/depth_anything_v2_small.onnx"), opts);
+    Ort::Session session(env, RESOLVE_MODEL("depth_anything_v2_small.onnx"), opts);
     Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     const float mean[] = {0.485f, 0.456f, 0.406f};
@@ -239,9 +256,10 @@ int main() {
     std::thread t_yolo(worker_yolo, std::ref(yolo_in), std::ref(yolo_out), std::ref(env));
     std::thread t_depth(worker_depth_anything, std::ref(depth_in), std::ref(depth_out), std::ref(env));
 
-    cv::VideoCapture cap("test_01_urban_crowd.mp4");
+    std::string video_source = resolve_file("test_01_urban_crowd.mp4");
+    cv::VideoCapture cap(video_source);
     if (!cap.isOpened()) {
-        std::cerr << "[ERROR] Cannot open video source: test_01_urban_crowd.mp4\n";
+        std::cerr << "[ERROR] Cannot open video source: " << video_source << "\n";
         return -1;
     }
 
@@ -281,7 +299,15 @@ int main() {
 
             bool hazard_on_path = false;
 
-            // 2. Evaluate Hazards & Draw Bounding Boxes
+            // 2. Sector-Based Assistive Navigation Analysis (Left, Center, Right)
+            cv::Mat lower_dl = dl_res.deeplab_mask(cv::Rect(0, 128, 384, 128));
+            int left_walkable   = cv::countNonZero(lower_dl(cv::Rect(0, 0, 128, 128)));
+            int center_walkable = cv::countNonZero(lower_dl(cv::Rect(128, 0, 128, 128)));
+            int right_walkable  = cv::countNonZero(lower_dl(cv::Rect(256, 0, 128, 128)));
+
+            int left_hazards = 0, center_hazards = 0, right_hazards = 0;
+            bool center_near = false, left_near = false, right_near = false;
+
             for (size_t i = 0; i < yolo_res.yolo_boxes.size(); ++i) {
                 cv::Rect2f norm_box = yolo_res.yolo_boxes[i];
 
@@ -306,6 +332,7 @@ int main() {
                 if (overlap > 0.15) {
                     hazard_on_path = true;
                     box_color = cv::Scalar(0, 0, 255); // Red: blocking walkable path
+                    bool is_near = false;
 
                     // Check Depth Anything proximity (518x518)
                     int md_x = std::max(0, (int)(norm_box.x * 518));
@@ -317,12 +344,66 @@ int main() {
                     double min_d, max_d;
                     cv::minMaxLoc(depth_roi, &min_d, &max_d);
 
-                    label = (max_d > 180.0) ? "HAZARD: NEAR" : "HAZARD: AHEAD";
+                    if (max_d > 180.0) {
+                        label = "HAZARD: NEAR (<2m)";
+                        is_near = true;
+                    } else {
+                        label = "HAZARD: AHEAD";
+                    }
+
+                    // Sector assignment
+                    float cx = norm_box.x + norm_box.width / 2.0f;
+                    if (cx < 0.35f) {
+                        left_hazards++;
+                        if (is_near) left_near = true;
+                    } else if (cx <= 0.65f) {
+                        center_hazards++;
+                        if (is_near) center_near = true;
+                    } else {
+                        right_hazards++;
+                        if (is_near) right_near = true;
+                    }
                 }
 
                 cv::rectangle(frame, cv::Rect(orig_x, orig_y, orig_box_w, orig_box_h), box_color, 2);
                 cv::putText(frame, label, cv::Point(orig_x, std::max(20, orig_y - 8)),
-                            cv::FONT_HERSHEY_SIMPLEX, 0.6, box_color, 2);
+                            cv::FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2);
+            }
+
+            // 3. Assistive Navigation Steering Decision
+            bool c_blocked = center_near || (center_hazards > 0);
+            bool l_walk = (left_walkable > 200) && !left_near;
+            bool r_walk = (right_walkable > 200) && !right_near;
+
+            std::string nav_text;
+            cv::Scalar nav_color;
+
+            if (!c_blocked && center_walkable > 300) {
+                nav_text = "NAV: PATH CLEAR - PROCEED FORWARD";
+                nav_color = cv::Scalar(0, 255, 0); // Green
+            } else if (c_blocked) {
+                if (l_walk && !r_walk) {
+                    nav_text = "NAV: HAZARD IN CENTER -> VEER LEFT";
+                    nav_color = cv::Scalar(0, 255, 255); // Yellow
+                } else if (r_walk && !l_walk) {
+                    nav_text = "NAV: HAZARD IN CENTER -> VEER RIGHT";
+                    nav_color = cv::Scalar(0, 255, 255); // Yellow
+                } else if (l_walk && r_walk) {
+                    nav_text = "NAV: HAZARD IN CENTER -> VEER RIGHT";
+                    nav_color = cv::Scalar(0, 255, 255); // Yellow
+                } else {
+                    nav_text = "NAV: CROWD BLOCKED -> STOP / CAUTION";
+                    nav_color = cv::Scalar(0, 0, 255); // Red
+                }
+            } else if (left_near) {
+                nav_text = "NAV: HAZARD ON LEFT -> BIAS RIGHT";
+                nav_color = cv::Scalar(0, 255, 255);
+            } else if (right_near) {
+                nav_text = "NAV: HAZARD ON RIGHT -> BIAS LEFT";
+                nav_color = cv::Scalar(0, 255, 255);
+            } else {
+                nav_text = "NAV: SCANNING FOR WALKABLE PATH";
+                nav_color = cv::Scalar(200, 200, 200);
             }
 
             // Calculate instantaneous FPS
@@ -332,16 +413,22 @@ int main() {
             double current_fps = (dt > 0.0) ? (1.0 / dt) : 0.0;
             smooth_fps = (smooth_fps == 0.0) ? current_fps : (0.9 * smooth_fps + 0.1 * current_fps);
 
-            // Status Banner
-            std::string status_text = hazard_on_path ? "STATUS: HAZARD INTERSECTING PATH" : "STATUS: PATH CLEAR";
-            cv::Scalar status_color = hazard_on_path ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
-            cv::putText(frame, status_text, cv::Point(20, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2);
+            // 4. High-Contrast Assistive HUD Overlay
+            cv::Mat hud_bg = frame.clone();
+            cv::rectangle(hud_bg, cv::Rect(10, 8, 620, 74), cv::Scalar(15, 15, 15), -1);
+            cv::addWeighted(hud_bg, 0.65, frame, 0.35, 0.0, frame);
 
-            std::string fps_text = "C++ GPU Pipeline FPS: " + std::to_string((int)smooth_fps);
-            cv::putText(frame, fps_text, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 255), 2);
+            cv::putText(frame, nav_text, cv::Point(20, 42), cv::FONT_HERSHEY_SIMPLEX, 0.72, nav_color, 2);
+
+            std::string telemetry = "C++ GPU: " + std::to_string((int)smooth_fps) + " FPS | Walkable: " + std::to_string(center_walkable) + "px";
+            cv::putText(frame, telemetry, cv::Point(20, 72), cv::FONT_HERSHEY_SIMPLEX, 0.52, cv::Scalar(220, 220, 220), 1);
+
+            // Draw corridor boundary indicators at bottom
+            cv::line(frame, cv::Point((int)(0.35 * orig_w), orig_h - 25), cv::Point((int)(0.35 * orig_w), orig_h), cv::Scalar(255, 255, 255), 1);
+            cv::line(frame, cv::Point((int)(0.65 * orig_w), orig_h - 25), cv::Point((int)(0.65 * orig_w), orig_h), cv::Scalar(255, 255, 255), 1);
         }
 
-        cv::imshow("SafePath Edge C++ Pipeline (GPU)", frame);
+        cv::imshow("SafePath Edge C++: Assistive Navigation", frame);
         if (cv::waitKey(1) == 27) break; // ESC to quit
     }
 

@@ -1,0 +1,31 @@
+# ==============================================================================
+# SafePath AI: GPU-Accelerated Requirements (NVIDIA CUDA 12)
+# ==============================================================================
+# Recommended for systems with NVIDIA RTX 3050, 3060, 40-series, etc.
+# Enables hardware Tensor Core acceleration and CUDA Execution Providers.
+#
+# Install with:
+#   pip install -r requirements-gpu.txt
+# ==============================================================================
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+# PyTorch with CUDA 12.4 pre-compiled binaries
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+
+# ONNX Runtime GPU (Matched to CUDA 12.x)
+onnxruntime-gpu==1.20.0
+
+# Computer Vision & Numerical Computing
+opencv-python>=4.10.0
+numpy>=1.26.0,<3.0.0
+pillow>=10.0.0
+
+# ONNX Utilities & Optimization
+onnx>=1.16.0
+onnxconverter-common>=1.14.0
+
+# Video Test Suite Fetcher
+yt-dlp>=2024.0.0
+

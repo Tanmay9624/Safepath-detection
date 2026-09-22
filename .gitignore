@@ -15,10 +15,7 @@ build/
 # Local heavy C++ SDKs (OpenCV & ONNX Runtime C++ downloads)
 deps/
 
-# External model weights (exceeds 100MB limit)
-*.onnx.data
-
-# Downloaded video test suite and temporary frames
+# Downloaded video test suite and temporary frames (large media files)
 *.mp4
 *.m4a
 opt_verification_frame*.jpg
@@ -27,8 +24,4 @@ opt_verification_frame*.jpg
 __pycache__/
 *.pyc
 onnxruntime_win-x64-gpu-*
-
-# Temporary testing and utility scripts
-batch_download.py
 verify_optimizations.py
-test.py
