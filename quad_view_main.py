@@ -86,6 +86,62 @@ def resolve_path(filename):
         return local_path
     return filename
 
+def resolve_video_path(source_str):
+    """Checks if source_str is a valid local video file."""
+    if not source_str:
+        return None
+    src_str = str(source_str).strip().strip('"').strip("'")
+    if os.path.isabs(src_str) and os.path.isfile(src_str):
+        return os.path.abspath(src_str)
+    if os.path.isfile(src_str):
+        return os.path.abspath(src_str)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_path = os.path.join(script_dir, src_str)
+    if os.path.isfile(script_path):
+        return os.path.abspath(script_path)
+    return None
+
+def resolve_stream_source(ip_arg=None, source_arg=None, default_cam=0):
+    """
+    Resolves camera, IP webcam, or video input stream source:
+    1. If --ip is provided:
+       - Auto-normalizes IP webcam URLs (e.g. 192.168.1.15:8080 -> http://192.168.1.15:8080/video).
+    2. If --video / --source / positional argument is provided:
+       - If valid video file path, resolves to file path.
+       - If numeric string (e.g. '0', '1'), converts to integer camera index.
+       - If URL or IP address, formats network stream.
+    3. Default fallback:
+       - Uses sample test video if found, or falls back to local machine webcam (default_cam = 0).
+    """
+    if ip_arg:
+        url = ip_arg.strip()
+        if not (url.startswith("http://") or url.startswith("https://") or url.startswith("rtsp://")):
+            if "/" not in url:
+                url = f"http://{url}/video"
+            else:
+                url = f"http://{url}"
+        return url, f"IP Webcam ({url})"
+
+    if source_arg is not None:
+        src = str(source_arg).strip().strip('"').strip("'")
+        resolved_file = resolve_video_path(src)
+        if resolved_file:
+            return resolved_file, f"Video File ({os.path.basename(resolved_file)})"
+        if src.isdigit():
+            return int(src), f"Webcam (Device Index {src})"
+        if src.startswith("http://") or src.startswith("https://") or src.startswith("rtsp://"):
+            return src, f"Network Stream ({src})"
+        if ":" in src and "." in src and not os.path.exists(src):
+            url = f"http://{src}/video" if "/" not in src else f"http://{src}"
+            return url, f"IP Webcam ({url})"
+        return src, f"Video Path ({src})"
+
+    # Default fallback: check test video, else local webcam
+    test_default = resolve_video_path("test_05_san_francisco_street.mp4") or resolve_video_path("test_01_urban_crowd.mp4")
+    if test_default:
+        return test_default, f"Video File ({os.path.basename(test_default)})"
+    return default_cam, f"Local Machine Webcam (Device Index {default_cam})"
+
 def prepare_tensor(image, w, h, apply_norm=True):
     resized = cv2.resize(image, (w, h), interpolation=cv2.INTER_LINEAR)
     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
@@ -213,8 +269,16 @@ def draw_panel_header(panel, title, status_text="", bg_color=(20, 20, 20), text_
 # ==============================================================================
 def main():
     parser = argparse.ArgumentParser(description="SafePath AI: 4-Panel Single-Window Quad Stream")
-    parser.add_argument("--source", type=str, default="test_05_san_francisco_street.mp4",
-                        help="Video file path or webcam index (default: test_05_san_francisco_street.mp4)")
+    parser.add_argument("source_pos", nargs="?", default=None, 
+                        help="Video file path or camera index (positional, e.g. path/to/video.mp4 or 0)")
+    parser.add_argument("--ip", type=str, default=None, 
+                        help="IP Webcam address or stream URL (e.g. 192.168.1.15:8080 or http://192.168.1.15:8080/video)")
+    parser.add_argument("--source", type=str, default=None, 
+                        help="Input video file path, camera index, or network stream URL")
+    parser.add_argument("--video", type=str, default=None, 
+                        help="Path to input video file (e.g. --video path/to/video.mp4)")
+    parser.add_argument("--camera", "--cam-index", dest="cam_index", type=int, default=0, 
+                        help="Local machine webcam device index (default: 0)")
     parser.add_argument("--conf", type=float, default=0.40, help="YOLO confidence threshold (default: 0.40)")
     parser.add_argument("--depth-cadence", type=int, default=2, help="Depth inference cadence (default: 2)")
     parser.add_argument("--tts", dest="enable_tts", action="store_true", default=True, help="Enable Audio TTS (default)")
@@ -225,13 +289,22 @@ def main():
     parser.add_argument("--save-snapshot", type=str, default="", help="Save a sample snapshot image to specified path")
     args = parser.parse_args()
 
+    # Determine input video source (IP Webcam, Local Camera, or Video)
+    video_source, source_desc = resolve_stream_source(
+        ip_arg=args.ip,
+        source_arg=args.video or args.source or args.source_pos,
+        default_cam=args.cam_index
+    )
+
     print("==================================================================")
     print(" SafePath AI: 4-Panel Single-Window Quad View Pipeline")
+    print(f"  - Source:                 {source_desc}")
     print("  - Panel 1 (Top-Left):     YOLOv8 Obstacle Detections")
     print("  - Panel 2 (Top-Right):    YOLOv8 + Depth V2 (Full-Res Colormap)")
     print("  - Panel 3 (Bottom-Left):  DeepLabV3 Walkable Path Segmentation")
     print("  - Panel 4 (Bottom-Right): Complete Assistive Navigation HUD")
-    print(f"  - Audio TTS: {'ENABLED (SAPI SpVoice + Earcon)' if args.enable_tts else 'DISABLED'}")
+    print(f"  - Audio TTS:              {'ENABLED (SAPI SpVoice + Earcon)' if args.enable_tts else 'DISABLED'}")
+    print(f"  - Depth Cadence:          {args.depth_cadence}x")
     print("==================================================================")
 
     # Initialize Priority Audio Engine if enabled
@@ -253,17 +326,31 @@ def main():
     t_obs.start()
     t_seg.start()
 
-    # Open video source
-    video_path = int(args.source) if args.source.isdigit() else resolve_path(args.source)
-    if not isinstance(video_path, int) and not os.path.exists(str(video_path)):
-        video_path = resolve_path("test_01_urban_crowd.mp4")
+    # Open video source with appropriate backend and buffer management
+    print(f"\n[INIT] Connecting to camera/video stream: {source_desc}...")
+    if isinstance(video_source, int):
+        if sys.platform == "win32":
+            cap = cv2.VideoCapture(video_source, cv2.CAP_DSHOW)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(video_source)
+        else:
+            cap = cv2.VideoCapture(video_source)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    else:
+        cap = cv2.VideoCapture(video_source)
+        if str(video_source).startswith(("http://", "https://", "rtsp://")):
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-    cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"[ERROR] Cannot open video source: {video_path}")
+        print(f"[ERROR] Cannot open video source: {video_source}")
+        if isinstance(video_source, int):
+            print("  [HINT] Ensure no other application is using your webcam.")
+            print("  [HINT] For smartphone streaming: python quad_view_main.py --ip <phone_ip:port>")
+        else:
+            print("  [HINT] Verify WiFi connection, IP address, or video file path.")
         return
 
-    print(f"\n[START] Streaming video: {video_path}")
+    print(f"\n[START] Streaming video: {source_desc}")
     print(">> Single 1280x720 Quad-View Window Active.")
     print(">> Controls: Press 'q' or 'ESC' to exit | Press 's' to save snapshot.\n")
 
@@ -277,11 +364,14 @@ def main():
     blocked_frame_count = 0
     clear_frame_count = 0
 
+    is_network_stream = str(video_source).startswith(("http://", "https://", "rtsp://"))
+    is_live_camera = isinstance(video_source, int)
+
     while True:
         ret, raw_frame = cap.read()
         if not ret:
-            # Seamless loop for video files
-            if not isinstance(video_path, int):
+            # Seamless loop only for local pre-recorded video files
+            if not is_live_camera and not is_network_stream:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
             break

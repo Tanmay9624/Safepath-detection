@@ -132,7 +132,12 @@ python main.py path/to/video.mp4 --max-frames 50    # Stops after 50 frames (aut
 #### 2.1 Run the 4-Panel Quad View Stream (`quad_view_main.py`)
 To monitor all four vision and navigation channels simultaneously in a single 1280x720 window:
 ```bash
-python quad_view_main.py
+# 1. Run with smartphone IP Webcam:
+python quad_view_main.py --ip 192.168.1.100:8080
+
+# 2. Run with USB camera or default video:
+python quad_view_main.py --camera 0
+python quad_view_main.py path/to/video.mp4
 ```
 * **Panel 1 (Top-Left):** YOLOv8 Obstacle Detections & Confidence.
 * **Panel 2 (Top-Right):** Depth Anything V2 High-Resolution Colormap + YOLOv8 Overlays & Metric Distances.

@@ -298,9 +298,12 @@ To view all perception and navigation layers simultaneously in a single, unified
 # Run 4-panel quad stream (Panel 1: YOLO, Panel 2: Depth V2 full-res, Panel 3: DeepLabV3, Panel 4: HUD):
 python quad_view_main.py
 
-# Or specify a custom video / webcam:
-python quad_view_main.py --source path/to/video.mp4
-python quad_view_main.py --source 0
+# 1. Run with smartphone IP Webcam:
+python quad_view_main.py --ip 192.168.1.100:8080
+
+# 2. Run with USB camera or default video:
+python quad_view_main.py --camera 0
+python quad_view_main.py path/to/video.mp4
 
 # Optional flags:
 python quad_view_main.py --clear-interval 15.0  # Seconds between 'Path is clear' audio (default: 15.0)
