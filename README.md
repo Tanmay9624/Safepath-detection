@@ -83,7 +83,7 @@ To maximize throughput under the GIL, we engineered a **Dual-Thread Co-Processin
 
 ---
 
-### 2. C++ Threading Architecture (`pipeline.cpp`): Tri-Thread Lock-Free Pipeline
+### 2. C++ Threading Architecture (`pipeline.cpp`): Tri-Thread Lock-Free Pipeline(Used)
 
 In C++, there is **NO Global Interpreter Lock**. Native C++17 `std::thread` instances run on true operating system hardware threads, allowing full concurrent execution across multiple CPU cores and asynchronous CUDA streams simultaneously.
 
