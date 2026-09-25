@@ -1,31 +1,28 @@
-SafePath Detection (Android Edge AI)
-SafePath is a real-time, edge-computing assistive navigation system designed for Android. It processes live camera feeds entirely on-device to provide auditory steering cues for visually impaired users or autonomous navigation systems.
+# SafePath Detection (Android Edge AI)
+
+SafePath is a real-time, edge-computing assistive navigation system designed for Android. It processes live camera feeds entirely on-device to provide auditory steering cues for visually impaired users or autonomous navigation systems. 
 
 The application bridges a modern Kotlin CameraX frontend with a highly optimized, multi-threaded C++ backend utilizing ONNX Runtime and OpenCV via JNI (Java Native Interface).
 
-🧠 System Architecture
+## 🧠 System Architecture
+
 The pipeline is designed for high-throughput edge inference, decoupling the UI from heavy AI workloads using a multi-threaded producer-consumer architecture.
 
-1. Frontend (Kotlin + CameraX)
-CameraX: Captures live frames in YUV format, extracting the raw byte array.
+### 1. Frontend (Kotlin + CameraX)
+* **CameraX:** Captures live frames in YUV format, extracting the raw byte array.
+* **JNI Bridge:** Passes the raw bytes and physical paths of the pre-loaded AI models to the C++ engine.
+* **Text-to-Speech (TTS):** Receives asynchronous string outputs from the C++ decision engine and vocalizes them to the user.
 
-JNI Bridge: Passes the raw bytes and physical paths of the pre-loaded AI models to the C++ engine.
+### 2. Backend (C++ + ONNX Runtime)
+The C++ engine spins up **four concurrent worker threads** synchronized via custom `BoundedQueue` structures:
+* **Thread 1 (DeepLabV3+):** Performs semantic segmentation to identify walkable paths (e.g., sidewalks, pavement) and divides the view into left, center, and right sectors.
+* **Thread 2 (YOLOv8):** Detects dynamic hazards, pedestrians, and obstacles, outputting normalized bounding boxes.
+* **Thread 3 (Depth Anything V2):** Runs at a staggered cadence (every 2nd frame) to estimate spatial proximity and prevent collisions with approaching objects.
+* **Thread 4 (Decision Engine):** Aggregates mask overlaps, bounding box coordinates, and depth maps. It calculates spatial logic (e.g., hazard overlapping walkable path) and generates text-based steering commands (e.g., `"HAZARD IN CENTER -> VEER RIGHT"`).
 
-Text-to-Speech (TTS): Receives asynchronous string outputs from the C++ decision engine and vocalizes them to the user.
+## 📂 Repository Structure
 
-2. Backend (C++ + ONNX Runtime)
-The C++ engine spins up four concurrent worker threads synchronized via custom BoundedQueue structures:
-
-Thread 1 (DeepLabV3+): Performs semantic segmentation to identify walkable paths (e.g., sidewalks, pavement) and divides the view into left, center, and right sectors.
-
-Thread 2 (YOLOv8): Detects dynamic hazards, pedestrians, and obstacles, outputting normalized bounding boxes.
-
-Thread 3 (Depth Anything V2): Runs at a staggered cadence (every 2nd frame) to estimate spatial proximity and prevent collisions with approaching objects.
-
-Thread 4 (Decision Engine): Aggregates mask overlaps, bounding box coordinates, and depth maps. It calculates spatial logic (e.g., hazard overlapping walkable path) and generates text-based steering commands (e.g., "HAZARD IN CENTER -> VEER RIGHT").
-
-📂 Repository Structure
-Plaintext
+```text
 android/
 ├── app/src/main/
 │   ├── java/com/example/myapplication/ # Kotlin UI, Camera, and TTS logic
@@ -38,7 +35,7 @@ Due to GitHub's strict file size limitations, the pre-trained ONNX models are no
 
 1. Clone the Repository
 Bash
-git clone https://github.com/Tanmay9624/Safepath-detection.git
+git clone [https://github.com/Tanmay9624/Safepath-detection.git](https://github.com/Tanmay9624/Safepath-detection.git)
 cd Safepath-detection/android
 2. Add the AI Models
 Navigate to app/src/main/ and ensure the assets folder exists.
