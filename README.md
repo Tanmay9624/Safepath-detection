@@ -204,7 +204,7 @@ full_test/
 │   └── check_onnx.py             # ONNX input/output dimension validator
 ├── deeplabv3_mobilenet_safepath.onnx       # Trained semantic segmentation model (Graph)
 ├── deeplabv3_mobilenet_safepath.onnx.data  # Model weight tensors (44 MB)
-├── depth_anything_v2_small.onnx            # Monocular depth estimation ONNX model
+├── depth_anything_v2_small.onnx            # Monocular depth estimation ONNX model ( initailised a MiDas small was used )
 ├── yolov8n_hazards.onnx                    # Real-time obstacle detection ONNX model
 ├── main.py                       # High-speed GPU Python pipeline (Headless by default)
 ├── quad_view_main.py             # 4-Panel Single-Window Quad Stream (1280x720)
