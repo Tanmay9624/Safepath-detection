@@ -281,7 +281,7 @@ python main.py path/to/video.mp4 --depth-cadence 3  # Boosts throughput to ~30-3
 python main.py path/to/video.mp4 --max-frames 50    # Stops after 50 frames (automated testing)
 ```
 
-* **Execution Mode:** Completely **Headless** by default (zero GUI windows). Renders all assistive directives through real-time TTS audio speech, 1000 Hz earcon warning beeps, and a live console status dashboard.
+* **Execution Mode:** Completely **Headless** by default (zero GUI windows). Renders all assistive directives through real-time TTS(Text To Speech) audio speech, 1000 Hz earcon warning beeps, and a live console status dashboard.
 * **Continuous Playback vs. Test Limits:** By default (`--max-frames 0`), the pipeline executes continuously in real time (loops video files indefinitely until `Ctrl+C`). Passing `--max-frames N` stops after $N$ frames for testing and benchmarks.
 * **Pipeline Frame Rates:** Runs at **~20 to 25+ FPS** in steady state on GPU. Increase `--depth-cadence` to `3` or `4` to push sustained performance to **30–35+ FPS**.
 * **Camera Fallback:** Automatically defaults to the local machine camera (`Index 0`) with Windows DirectShow acceleration if no IP webcam or video path is specified.
