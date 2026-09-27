@@ -75,7 +75,7 @@ To maximize throughput under the GIL, we engineered a **Dual-Thread Co-Processin
 1. **Mitigating GIL Lock Contention:**
    * Passing data through Python's `queue.Queue` requires acquiring and releasing the GIL. Reducing the worker count from 3 down to 2 cuts queue synchronization points by **50%**, eliminating thread thrashing.
 2. **Coupling Bounding Boxes with Depth Proximity:**
-   * In our navigation math, Depth is **only sampled inside YOLO bounding boxes**. By running YOLO and Depth sequentially on Thread 1, the depth map is generated immediately after bounding boxes are decoded on the same thread—with **zero inter-thread transfer latency**.
+   * In our navigation math, Depth is **only sampled inside YOLO (You Only Look Once)  bounding boxes**. By running YOLO and Depth sequentially on Thread 1, the depth map is generated immediately after bounding boxes are decoded on the same thread—with **zero inter-thread transfer latency**.
 3. **Balanced Workload Distribution:**
    * Thread 1 runs YOLO (6.9 ms) + Depth (48 ms every 2nd frame) $\rightarrow$ average latency: **~31 ms**.
    * Thread 2 runs DeepLab (6.9 ms) $\rightarrow$ average latency: **~7 ms**.
