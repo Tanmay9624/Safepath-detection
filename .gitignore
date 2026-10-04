@@ -18,10 +18,19 @@ deps/
 # Downloaded video test suite and temporary frames (large media files)
 *.mp4
 *.m4a
-opt_verification_frame*.jpg
 
 # Python cache & logs
 __pycache__/
 *.pyc
 onnxruntime_win-x64-gpu-*
 verify_optimizations.py
+PROJECT_REPORT_FROM_SCRATCH.md
+create_presentation.py
+pipeline.md
+pipeline_architecture_diagram.jpg
+pipeline_presentation.pptx
+pipeline_presentation_onyx.pptx
+test/export_model_images.py
+test/image_output/
+*.jpg
+onnxruntime-win-x64-gpu-*
