@@ -1,36 +1,121 @@
 # ==============================================================================
-# Full Test Folder Local .gitignore
+# SafePath AI - full_test/.gitignore
+# Rules to keep repository lightweight, clean, and strictly under GitHub quotas
 # ==============================================================================
 
-# Compiled binaries and Visual Studio build artifacts
+# ------------------------------------------------------------------------------
+# 1. Native C++ Compiled Binaries & Build Trees (>1 GB)
+# ------------------------------------------------------------------------------
 build/
+bin/
+Release/
+Debug/
+x64/
 *.exe
 *.dll
+*.so
+*.dylib
 *.pdb
 *.ilk
 *.exp
 *.lib
+*.a
+*.obj
+*.o
 *.vcxproj*
+*.sln
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
 
-# Local heavy C++ SDKs (OpenCV & ONNX Runtime C++ downloads)
+# ------------------------------------------------------------------------------
+# 2. Heavy External Pre-compiled SDKs (>1.5 GB)
+# ------------------------------------------------------------------------------
 deps/
+onnxruntime-win-x64-gpu-*/
+onnxruntime_win-x64-gpu-*
 
-# Downloaded video test suite and temporary frames (large media files)
+# ------------------------------------------------------------------------------
+# 3. Heavy Deep Learning Models & Weights (>150 MB, exceeds GitHub limits)
+# ------------------------------------------------------------------------------
+models/*.onnx
+models/*.onnx.data
+*.onnx
+*.onnx.data
+Android/app/src/main/assets/*.onnx
+Android/app/src/main/assets/*.onnx.data
+
+# ------------------------------------------------------------------------------
+# 4. Heavy Video Test Datasets (Hundreds of MB)
+# ------------------------------------------------------------------------------
+docs/videos/
 *.mp4
 *.m4a
+*.avi
+*.mov
+*.mkv
+*.wmv
 
-# Python cache & logs
+# ------------------------------------------------------------------------------
+# 5. Android Studio, Gradle Caches & Mobile Binaries (>800 MB)
+# ------------------------------------------------------------------------------
+Android/.gradle/
+Android/build/
+Android/app/build/
+Android/app/.cxx/
+Android/local.properties
+Android/.idea/
+Android/*.iml
+*.apk
+*.aab
+# Heavy pre-compiled native libraries in Android (avoid committing multi-hundred MB binaries)
+Android/app/src/main/cpp/libs/
+Android/app/src/main/cpp/sdk/native/bin/
+Android/app/src/main/cpp/sdk/native/libs/
+Android/app/src/main/cpp/sdk/native/staticlibs/
+Android/app/src/main/cpp/sdk/native/3rdparty/libs/
+
+# ------------------------------------------------------------------------------
+# 6. Python Cache, Bytecode & Virtual Environments
+# ------------------------------------------------------------------------------
 __pycache__/
-*.pyc
-onnxruntime_win-x64-gpu-*
-verify_optimizations.py
-PROJECT_REPORT_FROM_SCRATCH.md
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.log
+
+# ------------------------------------------------------------------------------
+# 7. Presentations & Binary Media Files
+# ------------------------------------------------------------------------------
+*.pptx
+*.ppt
+*.key
+docs/create_presentation.py
 create_presentation.py
-pipeline.md
-pipeline_architecture_diagram.jpg
-pipeline_presentation.pptx
-pipeline_presentation_onyx.pptx
-test/export_model_images.py
+
+# ------------------------------------------------------------------------------
+# 8. Temporary Test Outputs (Preserve docs/images/ for documentation)
+# ------------------------------------------------------------------------------
 test/image_output/
+opt_verification_frame*.jpg
+test/opt_verification_frame*.jpg
+# Ignore loose root images while strictly tracking curated docs images
 *.jpg
-onnxruntime-win-x64-gpu-*
+!docs/images/*.jpg
+!docs/images/**/*.jpg
+*.png
+!docs/images/*.png
+!docs/images/**/*.png
+
+# ------------------------------------------------------------------------------
+# 9. IDE, OS & Editor Metadata
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
