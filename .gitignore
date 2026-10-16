@@ -38,10 +38,10 @@ onnxruntime_win-x64-gpu-*
 # ------------------------------------------------------------------------------
 # 3. Heavy Deep Learning Models & Weights (>150 MB, exceeds GitHub limits)
 # ------------------------------------------------------------------------------
-models/*.onnx
-models/*.onnx.data
-*.onnx
-*.onnx.data
+# models/*.onnx
+# models/*.onnx.data
+# *.onnx
+# *.onnx.data
 Android/app/src/main/assets/*.onnx
 Android/app/src/main/assets/*.onnx.data
 
